@@ -1,0 +1,29 @@
+# Core Dependencies
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-dotenv==1.0.0
+pydantic==2.12.5
+
+# LINE Bot SDK
+line-bot-sdk==3.8.0
+
+# LangChain & RAG
+langchain==0.1.4
+langchain-google-genai==0.0.6
+langchain-community==0.0.16
+chromadb==0.4.22
+sentence-transformers>=2.7.0
+
+# Data Processing - 使用預編譯的 wheel 版本
+pandas>=2.0.0  # 移除固定版本,讓 pip 選擇最適合的預編譯版本
+openpyxl==3.1.2
+
+# Database
+sqlalchemy==2.0.25
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+
+# Utilities
+python-multipart==0.0.6

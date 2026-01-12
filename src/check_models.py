@@ -1,0 +1,18 @@
+"""
+測試 Google API Key 支援的模型
+"""
+import os
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+load_dotenv()
+
+api_key = os.getenv("GOOGLE_API_KEY")
+print(f"API Key: {api_key[:20]}...")
+
+genai.configure(api_key=api_key)
+
+print("\n可用的模型:")
+for model in genai.list_models():
+    if 'generateContent' in model.supported_generation_methods:
+        print(f"  - {model.name}")
