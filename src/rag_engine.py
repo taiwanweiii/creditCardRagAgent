@@ -80,14 +80,80 @@ class RAGEngine:
             category=category
         )
         
-        # Generate recommendation
+        # Generate recommendation with error handling
         messages = [
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=prompt)
         ]
         
-        response = self.llm.invoke(messages)
-        return response.content
+        try:
+            response = self.llm.invoke(messages)
+            return response.content
+            
+        except Exception as e:
+            error_msg = str(e)
+            
+            # 檢查是否為 API 額度問題
+            if "quota" in error_msg.lower() or "429" in error_msg:
+                return """❌ **Google Gemini API 額度已用盡**
+
+很抱歉,目前無法生成推薦,因為 Google Gemini API 的免費額度已經用完了。
+
+📊 **解決方案:**
+
+1. **等待額度重置**
+   - 免費額度每天會重置
+   - 請明天再試
+
+2. **升級 API 方案**
+   - 前往 Google AI Studio 查看使用量
+   - 網址: https://aistudio.google.com/app/apikey
+
+3. **使用新的 API Key**
+   - 建立新的 Google 帳號
+   - 取得新的 API Key
+   - 更新 .env 檔案
+
+💡 **臨時方案:**
+您仍然可以查看搜尋到的相關信用卡資訊,只是無法生成詳細的推薦說明。
+"""
+            
+            # 檢查是否為網路問題
+            elif "connection" in error_msg.lower() or "timeout" in error_msg.lower():
+                return """❌ **網路連線問題**
+
+無法連接到 Google Gemini API,請檢查:
+
+1. ✅ 網路連線是否正常
+2. ✅ 防火牆是否阻擋 Python
+3. ✅ 是否需要設定代理伺服器
+
+請稍後再試!
+"""
+            
+            # 檢查是否為 API Key 問題
+            elif "api" in error_msg.lower() and "key" in error_msg.lower():
+                return """❌ **API Key 設定問題**
+
+Google Gemini API Key 可能有問題,請檢查:
+
+1. ✅ .env 檔案中的 GOOGLE_API_KEY 是否正確
+2. ✅ API Key 是否有效
+3. ✅ API Key 是否已啟用 Gemini API
+
+請前往 Google AI Studio 檢查您的 API Key。
+網址: https://aistudio.google.com/app/apikey
+"""
+            
+            # 其他錯誤
+            else:
+                return f"""❌ **發生錯誤**
+
+生成推薦時發生問題:
+{error_msg[:200]}
+
+請稍後再試,或聯繫系統管理員。
+"""
     
     def _prepare_context(self, documents: List) -> str:
         """Prepare context from retrieved documents"""
