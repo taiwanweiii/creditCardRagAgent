@@ -1,7 +1,7 @@
 """
 LINE Bot integration for Credit Card Rewards RAG Agent
 """
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
@@ -53,8 +53,27 @@ class CreditCardLineBot:
         """Initialize RAG system"""
         print("🔄 Initializing RAG system...")
         
+        # Initialize file manager
+        from file_manager import CSVFileManager
+        from pathlib import Path
+        
+        file_manager = CSVFileManager(
+            data_dir=Config.DATA_DIR,
+            backup_dir=Config.BACKUP_DIR,
+            max_backups=Config.MAX_BACKUPS
+        )
+        
+        # Check for legacy CSV file and migrate if needed
+        legacy_csv = Path(Config.CREDIT_CARD_CSV_PATH)
+        if legacy_csv.exists() and legacy_csv.parent == Path(Config.DATA_DIR).parent:
+            print(f"🔄 Found legacy CSV file: {legacy_csv.name}")
+            file_manager.migrate_legacy_csv(legacy_csv)
+        
+        # Get latest CSV path
+        csv_path = Config.get_latest_csv_path()
+        
         # Load credit card data
-        self.card_processor = CreditCardDataProcessor(Config.CREDIT_CARD_CSV_PATH)
+        self.card_processor = CreditCardDataProcessor(csv_path)
         documents = self.card_processor.prepare_documents()
         
         # Check for expired cards
@@ -73,6 +92,22 @@ class CreditCardLineBot:
         # Initialize RAG engine
         self.rag_engine = RAGEngine(self.vector_manager)
         print("✅ RAG system initialized")
+    
+    def _verify_admin_api_key(self, x_api_key: str = Header(None)):
+        """Verify admin API key for protected endpoints"""
+        if not Config.ADMIN_API_KEY:
+            raise HTTPException(
+                status_code=500,
+                detail="Config 金鑰未設定"
+            )
+        
+        if not x_api_key or x_api_key != Config.ADMIN_API_KEY:
+            raise HTTPException(
+                status_code=401,
+                detail="金鑰驗證失敗"
+            )
+        
+        return True
     
     def _setup_routes(self):
         """Setup FastAPI routes"""
@@ -109,6 +144,178 @@ class CreditCardLineBot:
                 raise HTTPException(status_code=400, detail="Invalid signature")
             
             return {"status": "ok"}
+        
+        @self.app.post("/admin/refresh-vectordb")
+        async def refresh_vectordb(authorized: bool = Depends(self._verify_admin_api_key)):
+            """
+            管理端點:更新向量資料庫
+            需要在 Header 中提供 X-API-Key
+            """
+            try:
+                print("\n" + "="*60)
+                print("🔄 Admin API: Refreshing Vector Database")
+                print("="*60)
+                
+                # Initialize file manager
+                from file_manager import CSVFileManager
+                from pathlib import Path
+                import tempfile
+                
+                file_manager = CSVFileManager(
+                    data_dir=Config.DATA_DIR,
+                    backup_dir=Config.BACKUP_DIR,
+                    max_backups=Config.MAX_BACKUPS
+                )
+                
+                # Step 1: Backup current CSV if exists
+                print("\n💾 Step 1: Backing up current CSV...")
+                backed_up = file_manager.backup_current_csv()
+                if backed_up:
+                    print(f"✅ Current CSV backed up to backups/")
+                else:
+                    print("ℹ️  No current CSV to backup (first time setup)")
+                
+                # Step 2: Download from Google Drive if enabled
+                temp_csv_path = None
+                if Config.GOOGLE_DRIVE_ENABLED and Config.GOOGLE_DRIVE_FILE_ID:
+                    from google_drive_downloader import download_from_google_drive
+                    
+                    print("\n📥 Step 2: Downloading from Google Drive...")
+                    
+                    # Download to temporary file first
+                    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8') as tmp:
+                        temp_csv_path = Path(tmp.name)
+                    
+                    success = download_from_google_drive(
+                        file_id=Config.GOOGLE_DRIVE_FILE_ID,
+                        destination=str(temp_csv_path)
+                    )
+                    
+                    if success:
+                        print("✅ Downloaded latest data from Google Drive")
+                    else:
+                        print("❌ Google Drive download failed")
+                        raise Exception("Failed to download from Google Drive")
+                else:
+                    print("\n⚠️  Step 2: Google Drive not enabled, skipping download")
+                    # If no Google Drive, we need an existing CSV
+                    latest_csv = file_manager.get_latest_csv()
+                    if not latest_csv:
+                        raise FileNotFoundError(
+                            "No CSV file found and Google Drive is not enabled. "
+                            "Please enable Google Drive or manually place a CSV file in data/"
+                        )
+                    temp_csv_path = latest_csv
+                
+                # Step 3: Save new CSV with timestamp
+                print("\n💾 Step 3: Saving new CSV with timestamp...")
+                new_csv_path = file_manager.save_new_csv(temp_csv_path)
+                print(f"✅ Saved as: {new_csv_path.name}")
+                
+                # Clean up temp file if it was created
+                if Config.GOOGLE_DRIVE_ENABLED and temp_csv_path and temp_csv_path != new_csv_path:
+                    try:
+                        temp_csv_path.unlink()
+                    except:
+                        pass
+                
+                # Step 4: Clean up old backups
+                print("\n🗑️  Step 4: Cleaning up old backups...")
+                file_manager.cleanup_old_backups()
+                backup_count = file_manager.get_backup_count()
+                print(f"✅ Backup count: {backup_count}")
+                
+                # Step 5: Reload credit card data
+                print("\n📊 Step 5: Loading credit card data...")
+                self.card_processor = CreditCardDataProcessor(str(new_csv_path))
+                documents = self.card_processor.prepare_documents()
+                print(f"✅ Loaded {len(documents)} documents")
+                
+                # Check for expired cards
+                expired = self.card_processor.check_expired_cards()
+                if expired:
+                    print(f"⚠️  Found {len(expired)} expired cards")
+                
+                # Step 6: Delete existing vector store
+                print("\n🗑️  Step 6: Deleting existing vector store...")
+                try:
+                    self.vector_manager.delete_collection()
+                    print("✅ Deleted old vector store")
+                except Exception as e:
+                    print(f"⚠️  Error deleting old vector store: {e}")
+                
+                # Step 7: Create new vector store
+                print("\n📊 Step 7: Creating new vector store...")
+                self.vector_manager.create_vectorstore(documents)
+                print("✅ Created new vector store")
+                
+                # Step 8: Reinitialize RAG engine
+                print("\n🔄 Step 8: Reinitializing RAG engine...")
+                self.rag_engine = RAGEngine(self.vector_manager)
+                print("✅ RAG engine reinitialized")
+                
+                print("\n" + "="*60)
+                print("✅ Vector database refresh complete!")
+                print("="*60 + "\n")
+                
+                return {
+                    "status": "success",
+                    "message": "Vector database refreshed successfully",
+                    "csv_filename": new_csv_path.name,
+                    "documents_count": len(documents),
+                    "expired_cards_count": len(expired) if expired else 0,
+                    "backup_count": backup_count
+                }
+            
+            except Exception as e:
+                print(f"\n❌ Error refreshing vector database: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to refresh vector database: {str(e)}"
+                )
+        
+        @self.app.get("/admin/status")
+        async def admin_status(authorized: bool = Depends(self._verify_admin_api_key)):
+            """
+            管理端點:查詢系統詳細狀態
+            需要在 Header 中提供 X-API-Key
+            """
+            try:
+                # Get vector store stats
+                vector_store_exists = False
+                document_count = 0
+                
+                try:
+                    if self.vector_manager.vectorstore:
+                        vector_store_exists = True
+                        # Try to get collection count
+                        collection = self.vector_manager.vectorstore._collection
+                        document_count = collection.count()
+                except:
+                    pass
+                
+                # Get expired cards
+                expired_cards = []
+                if self.card_processor:
+                    expired_cards = self.card_processor.check_expired_cards()
+                
+                return {
+                    "status": "healthy",
+                    "rag_initialized": self.rag_engine is not None,
+                    "vector_store_exists": vector_store_exists,
+                    "documents_in_vectordb": document_count,
+                    "users_count": self.user_manager.get_user_count(),
+                    "expired_cards_count": len(expired_cards),
+                    "expired_cards": expired_cards,
+                    "google_drive_enabled": Config.GOOGLE_DRIVE_ENABLED,
+                    "debug_mode": Config.DEBUG
+                }
+            
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to get status: {str(e)}"
+                )
     
     def _register_handlers(self):
         """Register LINE message handlers"""

@@ -10,11 +10,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY 信用卡資料模板.csv .
 
-# Create .env from environment variables at runtime
+# Set environment variables
 ENV PYTHONUNBUFFERED=1
 
 # Expose port
 EXPOSE 8000
 
-# Initialize vector database and start application
-CMD cd src && python init_db.py && python main.py
+# Change to src directory and start application
+WORKDIR /app/src
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+
+# Start application (vector DB will be initialized on first run if needed)
+CMD ["python", "main.py"]

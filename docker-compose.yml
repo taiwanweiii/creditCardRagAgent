@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  credit-card-bot:
+    build: .
+    container_name: credit-card-rag-bot
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      # 資料持久化 - 向量資料庫
+      - ./chroma_db:/app/chroma_db
+      # 資料持久化 - SQLite 資料庫
+      - ./src/creditcard.db:/app/src/creditcard.db
+      # CSV 檔案管理 - 資料檔案資料夾
+      - ./data:/app/data
+      # CSV 檔案管理 - 備份資料夾
+      - ./backups:/app/backups
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - credit-card-network
+
+networks:
+  credit-card-network:
+    driver: bridge
