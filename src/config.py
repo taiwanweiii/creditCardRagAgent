@@ -39,11 +39,8 @@ class Config:
     MAX_BACKUPS = int(os.getenv("MAX_BACKUPS", "30"))
     
     # Credit Card Data - 動態取得最新的 CSV 檔案
-    # 注意:實際路徑由 file_manager 動態決定
-    CREDIT_CARD_CSV_PATH = os.getenv(
-        "CREDIT_CARD_CSV_PATH", 
-        str(PROJECT_ROOT / "信用卡資料模板.csv")  # 向後相容的預設值
-    )
+    # 注意：實際路徑由 get_latest_csv_path() 動態決定
+    # 不再支援舊的固定檔名，請使用 data/ 目錄的時間戳版本
     
     # Google Drive Integration
     GOOGLE_DRIVE_ENABLED = os.getenv("GOOGLE_DRIVE_ENABLED", "False").lower() == "true"
@@ -68,8 +65,11 @@ class Config:
         if latest_csv:
             return str(latest_csv)
         
-        # Fallback to legacy path for backward compatibility
-        return cls.CREDIT_CARD_CSV_PATH
+        # 如果找不到檔案，拋出錯誤（不再支援舊的固定檔名）
+        raise FileNotFoundError(
+            f"找不到 CSV 檔案於 {cls.DATA_DIR}。"
+            "請確保已透過 Google Drive 下載或手動放置 CSV 檔案至 data/ 目錄。"
+        )
     
     @classmethod
     def validate(cls):

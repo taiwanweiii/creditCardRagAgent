@@ -11,12 +11,12 @@
 ### 步驟 1: 上傳 CSV 到 Google Drive
 
 1. 登入 [Google Drive](https://drive.google.com)
-2. 上傳 `信用卡資料模板.csv` 檔案
+2. 上傳您的信用卡資料 CSV 檔案
 3. 記住上傳的位置
 
 ### 步驟 2: 設定為公開分享
 
-1. 在 Google Drive 中,右鍵點擊 `信用卡資料模板.csv`
+1. 在 Google Drive 中,右鍵點擊您的 CSV 檔案
 2. 選擇 **"共用"** 或 **"取得連結"**
 3. 將權限設定為 **"知道連結的任何人都可以檢視"**
 4. 複製分享連結
@@ -62,7 +62,7 @@ python init_db.py
 🌐 Google Drive 整合已啟用
 🔄 從 Google Drive 下載檔案...
    檔案 ID: 1ABC123xyz...
-✅ 下載完成: 信用卡資料模板.csv (3,212 bytes)
+✅ 下載完成 (Google Sheets): 信用卡資料模板_YYYYMMDD_HHMMSS.csv
 ✅ 已從 Google Drive 更新資料
 ```
 

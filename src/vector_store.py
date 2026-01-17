@@ -158,25 +158,3 @@ class VectorStoreManager:
         self.vectorstore.delete_collection()
         print("✅ Vector store collection deleted")
 
-
-if __name__ == "__main__":
-    from data_processor import CreditCardDataProcessor
-    
-    # Test vector store creation
-    print("📊 Testing Vector Store Manager\n")
-    
-    # Load credit card data
-    processor = CreditCardDataProcessor("./信用卡資料模板.csv")
-    documents = processor.prepare_documents()
-    
-    # Create vector store
-    manager = VectorStoreManager()
-    manager.create_vectorstore(documents)
-    
-    # Test search
-    print("\n🔍 Testing search for '加油':")
-    results = manager.search("加油", k=3)
-    for i, doc in enumerate(results, 1):
-        print(f"\n{i}. {doc.metadata['card_name']}")
-        print(f"   銀行: {doc.metadata['bank']}")
-        print(f"   需要切換APP: {doc.metadata['requires_app_switch']}")

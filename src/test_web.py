@@ -45,19 +45,12 @@ async def startup_event():
     
     # Initialize file manager
     from file_manager import CSVFileManager
-    from pathlib import Path
     
     file_manager = CSVFileManager(
         data_dir=Config.DATA_DIR,
         backup_dir=Config.BACKUP_DIR,
         max_backups=Config.MAX_BACKUPS
     )
-    
-    # Check for legacy CSV file and migrate if needed
-    legacy_csv = Path(Config.CREDIT_CARD_CSV_PATH)
-    if legacy_csv.exists() and legacy_csv.parent == Path(Config.DATA_DIR).parent:
-        print(f"🔄 Found legacy CSV file: {legacy_csv.name}")
-        file_manager.migrate_legacy_csv(legacy_csv)
     
     # Get latest CSV path
     csv_path = Config.get_latest_csv_path()

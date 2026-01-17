@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -8,7 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY src/ ./src/
-COPY 信用卡資料模板.csv .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

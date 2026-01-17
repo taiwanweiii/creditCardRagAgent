@@ -56,6 +56,7 @@ class CreditCardLineBot:
         # Initialize file manager
         from file_manager import CSVFileManager
         from pathlib import Path
+        import tempfile
         
         file_manager = CSVFileManager(
             data_dir=Config.DATA_DIR,
@@ -63,14 +64,49 @@ class CreditCardLineBot:
             max_backups=Config.MAX_BACKUPS
         )
         
-        # Check for legacy CSV file and migrate if needed
-        legacy_csv = Path(Config.CREDIT_CARD_CSV_PATH)
-        if legacy_csv.exists() and legacy_csv.parent == Path(Config.DATA_DIR).parent:
-            print(f"🔄 Found legacy CSV file: {legacy_csv.name}")
-            file_manager.migrate_legacy_csv(legacy_csv)
+        # Check if we have a CSV file
+        latest_csv = file_manager.get_latest_csv()
+        
+        # If no CSV exists, try to download from Google Drive
+        if not latest_csv:
+            if Config.GOOGLE_DRIVE_ENABLED and Config.GOOGLE_DRIVE_FILE_ID:
+                print("📥 No CSV found, downloading from Google Drive...")
+                from google_drive_downloader import download_from_google_drive
+                
+                # Download to temporary file
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8') as tmp:
+                    temp_csv_path = Path(tmp.name)
+                
+                success = download_from_google_drive(
+                    file_id=Config.GOOGLE_DRIVE_FILE_ID,
+                    destination=str(temp_csv_path)
+                )
+                
+                if success:
+                    # Save with timestamp
+                    new_csv_path = file_manager.save_new_csv(temp_csv_path)
+                    # Clean up temp file
+                    try:
+                        temp_csv_path.unlink()
+                    except:
+                        pass
+                    print(f"✅ Downloaded and saved: {new_csv_path.name}")
+                else:
+                    print("❌ Failed to download from Google Drive")
+                    print("⚠️  RAG system not initialized - please use /admin/refresh-vectordb API to initialize")
+                    return
+            else:
+                print("⚠️  No CSV file found in data/ directory")
+                print("⚠️  RAG system not initialized - please use /admin/refresh-vectordb API to initialize")
+                print("💡 Tip: Enable Google Drive in .env or manually place a CSV file in data/")
+                return
         
         # Get latest CSV path
-        csv_path = Config.get_latest_csv_path()
+        try:
+            csv_path = Config.get_latest_csv_path()
+        except FileNotFoundError:
+            print("⚠️  RAG system not initialized - no CSV file available")
+            return
         
         # Load credit card data
         self.card_processor = CreditCardDataProcessor(csv_path)
@@ -122,9 +158,11 @@ class CreditCardLineBot:
         
         @self.app.get("/health")
         async def health_check():
+            rag_ready = self.rag_engine is not None
             return {
                 "status": "healthy",
-                "rag_initialized": self.rag_engine is not None,
+                "rag_initialized": rag_ready,
+                "message": "Ready" if rag_ready else "RAG not initialized - call /admin/refresh-vectordb to initialize",
                 "users_count": self.user_manager.get_user_count()
             }
         
@@ -167,66 +205,61 @@ class CreditCardLineBot:
                     max_backups=Config.MAX_BACKUPS
                 )
                 
-                # Step 1: Backup current CSV if exists
-                print("\n💾 Step 1: Backing up current CSV...")
+                # Step 1: Check if Google Drive is enabled
+                if not Config.GOOGLE_DRIVE_ENABLED or not Config.GOOGLE_DRIVE_FILE_ID:
+                    print("\n❌ Step 1: Google Drive is required for updating vector database")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="更新向量資料庫需要啟用 Google Drive。請在 .env 設定 GOOGLE_DRIVE_ENABLED=True 和 GOOGLE_DRIVE_FILE_ID"
+                    )
+                
+                # Step 2: Download from Google Drive
+                from google_drive_downloader import download_from_google_drive
+                
+                print("\n📥 Step 2: Downloading from Google Drive...")
+                
+                # Download to temporary file first
+                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8') as tmp:
+                    temp_csv_path = Path(tmp.name)
+                
+                success = download_from_google_drive(
+                    file_id=Config.GOOGLE_DRIVE_FILE_ID,
+                    destination=str(temp_csv_path)
+                )
+                
+                if not success:
+                    print("❌ Google Drive download failed")
+                    raise Exception("Failed to download from Google Drive")
+                
+                print("✅ Downloaded latest data from Google Drive")
+                
+                # Step 3: Backup current CSV if exists
+                print("\n💾 Step 3: Backing up current CSV...")
                 backed_up = file_manager.backup_current_csv()
                 if backed_up:
                     print(f"✅ Current CSV backed up to backups/")
                 else:
                     print("ℹ️  No current CSV to backup (first time setup)")
                 
-                # Step 2: Download from Google Drive if enabled
-                temp_csv_path = None
-                if Config.GOOGLE_DRIVE_ENABLED and Config.GOOGLE_DRIVE_FILE_ID:
-                    from google_drive_downloader import download_from_google_drive
-                    
-                    print("\n📥 Step 2: Downloading from Google Drive...")
-                    
-                    # Download to temporary file first
-                    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8') as tmp:
-                        temp_csv_path = Path(tmp.name)
-                    
-                    success = download_from_google_drive(
-                        file_id=Config.GOOGLE_DRIVE_FILE_ID,
-                        destination=str(temp_csv_path)
-                    )
-                    
-                    if success:
-                        print("✅ Downloaded latest data from Google Drive")
-                    else:
-                        print("❌ Google Drive download failed")
-                        raise Exception("Failed to download from Google Drive")
-                else:
-                    print("\n⚠️  Step 2: Google Drive not enabled, skipping download")
-                    # If no Google Drive, we need an existing CSV
-                    latest_csv = file_manager.get_latest_csv()
-                    if not latest_csv:
-                        raise FileNotFoundError(
-                            "No CSV file found and Google Drive is not enabled. "
-                            "Please enable Google Drive or manually place a CSV file in data/"
-                        )
-                    temp_csv_path = latest_csv
-                
-                # Step 3: Save new CSV with timestamp
-                print("\n💾 Step 3: Saving new CSV with timestamp...")
+                # Step 4: Save new CSV with timestamp
+                print("\n💾 Step 4: Saving new CSV with timestamp...")
                 new_csv_path = file_manager.save_new_csv(temp_csv_path)
                 print(f"✅ Saved as: {new_csv_path.name}")
                 
-                # Clean up temp file if it was created
-                if Config.GOOGLE_DRIVE_ENABLED and temp_csv_path and temp_csv_path != new_csv_path:
-                    try:
-                        temp_csv_path.unlink()
-                    except:
-                        pass
+                # Clean up temp file
+                try:
+                    temp_csv_path.unlink()
+                except:
+                    pass
                 
-                # Step 4: Clean up old backups
-                print("\n🗑️  Step 4: Cleaning up old backups...")
+                # Step 5: Clean up old backups
+                print("\n🗑️  Step 5: Cleaning up old backups...")
                 file_manager.cleanup_old_backups()
                 backup_count = file_manager.get_backup_count()
                 print(f"✅ Backup count: {backup_count}")
                 
-                # Step 5: Reload credit card data
-                print("\n📊 Step 5: Loading credit card data...")
+                # Step 6: Reload credit card data
+                print("\n📊 Step 6: Loading credit card data...")
                 self.card_processor = CreditCardDataProcessor(str(new_csv_path))
                 documents = self.card_processor.prepare_documents()
                 print(f"✅ Loaded {len(documents)} documents")
@@ -236,21 +269,21 @@ class CreditCardLineBot:
                 if expired:
                     print(f"⚠️  Found {len(expired)} expired cards")
                 
-                # Step 6: Delete existing vector store
-                print("\n🗑️  Step 6: Deleting existing vector store...")
+                # Step 7: Delete existing vector store
+                print("\n🗑️  Step 7: Deleting existing vector store...")
                 try:
                     self.vector_manager.delete_collection()
                     print("✅ Deleted old vector store")
                 except Exception as e:
                     print(f"⚠️  Error deleting old vector store: {e}")
                 
-                # Step 7: Create new vector store
-                print("\n📊 Step 7: Creating new vector store...")
+                # Step 8: Create new vector store
+                print("\n📊 Step 8: Creating new vector store...")
                 self.vector_manager.create_vectorstore(documents)
                 print("✅ Created new vector store")
                 
-                # Step 8: Reinitialize RAG engine
-                print("\n🔄 Step 8: Reinitializing RAG engine...")
+                # Step 9: Reinitialize RAG engine
+                print("\n🔄 Step 9: Reinitializing RAG engine...")
                 self.rag_engine = RAGEngine(self.vector_manager)
                 print("✅ RAG engine reinitialized")
                 
@@ -348,7 +381,13 @@ class CreditCardLineBot:
         """
         # Check if RAG is initialized
         if not self.rag_engine:
-            return "⚠️  系統初始化中,請稍後再試..."
+            return """⚠️ 系統尚未初始化
+
+信用卡資料庫尚未建立，請聯繫管理員執行以下指令：
+
+curl -X POST http://your-server/admin/refresh-vectordb -H "X-API-Key: your_key"
+
+或等待系統管理員初始化資料庫。"""
         
         # Command: /start or /help
         if text.lower() in ['/start', '/help', '開始', '說明']:

@@ -39,19 +39,12 @@ class TestCLI:
         
         # Initialize file manager
         from file_manager import CSVFileManager
-        from pathlib import Path
         
         file_manager = CSVFileManager(
             data_dir=Config.DATA_DIR,
             backup_dir=Config.BACKUP_DIR,
             max_backups=Config.MAX_BACKUPS
         )
-        
-        # Check for legacy CSV file and migrate if needed
-        legacy_csv = Path(Config.CREDIT_CARD_CSV_PATH)
-        if legacy_csv.exists() and legacy_csv.parent == Path(Config.DATA_DIR).parent:
-            print(f"🔄 Found legacy CSV file: {legacy_csv.name}")
-            file_manager.migrate_legacy_csv(legacy_csv)
         
         # Get latest CSV path
         csv_path = Config.get_latest_csv_path()
@@ -235,7 +228,7 @@ def main():
         print("\n請確認:")
         print("1. 已設定 GOOGLE_API_KEY 環境變數")
         print("2. 已執行 'python init_db.py' 初始化向量資料庫")
-        print("3. 信用卡資料模板.csv 檔案存在")
+        print("3. CSV 檔案存在於 data/ 目錄")
 
 
 if __name__ == "__main__":

@@ -139,16 +139,3 @@ APP切換說明:
             self.load_data()
         
         return self.df['信用卡名稱'].tolist()
-
-
-if __name__ == "__main__":
-    # Test the data processor
-    processor = CreditCardDataProcessor("./信用卡資料模板.csv")
-    processor.load_data()
-    processor.check_expired_cards()
-    docs = processor.prepare_documents()
-    
-    print(f"\n📄 Sample document:")
-    print(docs[0]['content'])
-    print(f"\n📋 Metadata:")
-    print(docs[0]['metadata'])

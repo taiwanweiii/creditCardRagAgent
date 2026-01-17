@@ -170,7 +170,8 @@ Docker Compose 會自動掛載以下目錄/檔案:
 volumes:
   - ./chroma_db:/app/chroma_db                    # 向量資料庫
   - ./src/creditcard.db:/app/src/creditcard.db    # SQLite 資料庫
-  - ./信用卡資料模板.csv:/app/信用卡資料模板.csv      # CSV 資料
+  - ./data:/app/data                              # CSV 資料目錄
+  - ./backups:/app/backups                        # CSV 備份目錄
 ```
 
 ### 資料備份
@@ -182,8 +183,7 @@ tar -czf chroma_db_backup_$(date +%Y%m%d).tar.gz chroma_db/
 # 備份 SQLite 資料庫
 cp src/creditcard.db creditcard_backup_$(date +%Y%m%d).db
 
-# 備份 CSV 檔案
-cp 信用卡資料模板.csv 信用卡資料模板_backup_$(date +%Y%m%d).csv
+# CSV 備份由系統自動管理於 backups/ 目錄
 ```
 
 ### 資料還原

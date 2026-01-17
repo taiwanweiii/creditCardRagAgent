@@ -244,34 +244,3 @@ Google Gemini API Key 可能有問題,請檢查:
         
         return "\n\n".join(summary_parts)
 
-
-if __name__ == "__main__":
-    from data_processor import CreditCardDataProcessor
-    
-    print("🤖 Testing RAG Engine\n")
-    
-    # Initialize components
-    processor = CreditCardDataProcessor("./信用卡資料模板.csv")
-    documents = processor.prepare_documents()
-    
-    vector_manager = VectorStoreManager()
-    
-    # Try to load existing vector store, or create new one
-    try:
-        vector_manager.load_vectorstore()
-    except FileNotFoundError:
-        vector_manager.create_vectorstore(documents)
-    
-    # Create RAG engine
-    rag_engine = RAGEngine(vector_manager)
-    
-    # Test recommendation
-    print("🔍 測試查詢: 我要去加油\n")
-    user_cards = ["中國信託中油聯名卡", "台新Richart卡", "滙豐匯鑽卡"]
-    
-    recommendation = rag_engine.recommend_cards(
-        query="我要去加油",
-        user_cards=user_cards
-    )
-    
-    print(recommendation)

@@ -9,11 +9,18 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from data_processor import CreditCardDataProcessor
+from config import Config
+
+
+def get_csv_path():
+    """Helper function to get the latest CSV path for testing"""
+    return Config.get_latest_csv_path()
 
 
 def test_load_data():
     """Test loading credit card data from CSV"""
-    processor = CreditCardDataProcessor("./信用卡資料模板.csv")
+    csv_path = get_csv_path()
+    processor = CreditCardDataProcessor(csv_path)
     df = processor.load_data()
     
     assert df is not None
@@ -25,7 +32,8 @@ def test_load_data():
 
 def test_prepare_documents():
     """Test preparing documents for RAG"""
-    processor = CreditCardDataProcessor("./信用卡資料模板.csv")
+    csv_path = get_csv_path()
+    processor = CreditCardDataProcessor(csv_path)
     documents = processor.prepare_documents()
     
     assert len(documents) > 0
@@ -40,21 +48,30 @@ def test_prepare_documents():
 
 def test_get_card_by_name():
     """Test getting specific card by name"""
-    processor = CreditCardDataProcessor("./信用卡資料模板.csv")
+    csv_path = get_csv_path()
+    processor = CreditCardDataProcessor(csv_path)
     processor.prepare_documents()
     
-    card = processor.get_card_by_name("台新Richart卡")
+    # Get all card names first and test with the first one
+    card_names = processor.get_all_card_names()
+    assert len(card_names) > 0
+    
+    # Test get_card_by_name with the first card
+    first_card_name = card_names[0]
+    card = processor.get_card_by_name(first_card_name)
     assert card is not None
-    assert card['metadata']['card_name'] == "台新Richart卡"
+    assert card['metadata']['card_name'] == first_card_name
 
 
 def test_get_all_card_names():
     """Test getting all card names"""
-    processor = CreditCardDataProcessor("./信用卡資料模板.csv")
+    csv_path = get_csv_path()
+    processor = CreditCardDataProcessor(csv_path)
     card_names = processor.get_all_card_names()
     
     assert len(card_names) > 0
-    assert "台新Richart卡" in card_names
+    # Verify all names are strings
+    assert all(isinstance(name, str) for name in card_names)
 
 
 if __name__ == "__main__":
